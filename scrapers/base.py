@@ -45,22 +45,27 @@ class BaseScraper(ABC):
             time.sleep(3)
 
     def login(self):
+        """Override in subclass. Should return True on success, False otherwise."""
         pass
 
     @abstractmethod
     def check_slots(self):
+        """Override in subclass. Should return True if slots available."""
         pass
 
     def run_check(self):
+        """Orchestrates the whole check: driver init, Cloudflare bypass, login, slot check."""
         try:
             self._init_driver()
             self._bypass_cloudflare()
-            self.login()
+            login_success = self.login()
+            if not login_success:
+                return False, "Login failed."
             available = self.check_slots()
             msg = "✅ Slots AVAILABLE!" if available else "❌ No slots."
             return available, msg
         except Exception as e:
-            logger.error(f"Error: {e}")
+            logger.error(f"Error during check: {e}")
             return False, f"Error: {str(e)}"
         finally:
             if self.driver:

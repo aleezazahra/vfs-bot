@@ -5,3 +5,6 @@ selenium
 webdriver-manager
 pytesseract
 Pillow
+cv2
+numpy 
+pytesseract
