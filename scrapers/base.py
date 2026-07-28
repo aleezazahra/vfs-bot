@@ -2,6 +2,9 @@ import time
 import logging
 from abc import ABC, abstractmethod
 from seleniumbase import Driver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 logger = logging.getLogger(__name__)
 
@@ -18,31 +21,79 @@ class BaseScraper(ABC):
         self.driver = Driver(uc=True, headless=self.headless)
         self.driver.maximize_window()
 
+    def _wait_for_page_load(self, timeout=30):
+        try:
+            WebDriverWait(self.driver, timeout).until(
+                lambda d: d.execute_script("return document.readyState") == "complete"
+            )
+        except:
+            pass
+
+    def _is_cloudflare_challenge(self):
+        """Check if the page is currently showing a Cloudflare challenge."""
+        page_source = self.driver.page_source.lower()
+        title = self.driver.title.lower()
+        if "cloudflare" in title or "checking your browser" in page_source or "cf-challenge" in page_source:
+            return True
+        # Look for the Turnstile iframe or widget
+        if self.driver.find_elements(By.XPATH, "//iframe[contains(@src, 'turnstile') or contains(@src, 'challenge')]"):
+            return True
+        if self.driver.find_elements(By.XPATH, "//div[contains(@class, 'cf-challenge') or contains(@class, 'turnstile')]"):
+            return True
+        return False
+
     def _bypass_cloudflare(self):
         if not self.url:
             raise ValueError("No URL provided.")
         logger.info(f"Navigating to {self.url}")
-        self.driver.uc_open_with_reconnect(self.url, reconnect_time=4)
-        time.sleep(5)
+        # Open with reconnect (handles initial challenge)
+        self.driver.uc_open_with_reconnect(self.url, reconnect_time=6)
+        self._wait_for_page_load(10)
 
-        # Try CAPTCHA a few times
-        for _ in range(3):
-            try:
-                self.driver.uc_gui_click_captcha()
-                logger.info("CAPTCHA clicked.")
+        # If still a challenge, retry multiple times
+        max_retries = 4
+        for attempt in range(max_retries):
+            if self._is_cloudflare_challenge():
+                logger.info(f"Cloudflare challenge detected (attempt {attempt+1}/{max_retries}).")
+                try:
+                    # SeleniumBase UC mode click
+                    self.driver.uc_gui_click_captcha()
+                    logger.info("CAPTCHA clicked using uc_gui_click_captcha().")
+                    time.sleep(3)
+                    # Check if solved
+                    if not self._is_cloudflare_challenge():
+                        logger.info("Cloudflare solved successfully!")
+                        break
+                except Exception as e:
+                    logger.warning(f"uc_gui_click_captcha() failed: {e}")
+                    # Fallback: try to click the checkbox via JavaScript
+                    try:
+                        self.driver.execute_script("""
+                            var iframe = document.querySelector('iframe[src*="turnstile"]');
+                            if (iframe) {
+                                var doc = iframe.contentDocument || iframe.contentWindow.document;
+                                var checkbox = doc.querySelector('.challenge-container input[type="checkbox"]');
+                                if (checkbox) checkbox.click();
+                            }
+                        """)
+                        logger.info("Tried to click CAPTCHA via JS fallback.")
+                        time.sleep(3)
+                    except:
+                        pass
+                    # If still challenge, refresh and try again
+                    if self._is_cloudflare_challenge():
+                        logger.warning("Challenge remains, refreshing page.")
+                        self.driver.refresh()
+                        self._wait_for_page_load(10)
+                        continue
+            else:
+                logger.info("No Cloudflare challenge detected on this load.")
                 break
-            except:
-                time.sleep(2)
-        time.sleep(3)
+        else:
+            logger.warning("Cloudflare challenge not resolved after multiple attempts. Continuing anyway.")
 
-        # If still challenge, extra try
-        if "cloudflare" in self.driver.title.lower():
-            time.sleep(5)
-            try:
-                self.driver.uc_gui_click_captcha()
-            except:
-                pass
-            time.sleep(3)
+        # Final wait for page to become interactive
+        self._wait_for_page_load(10)
 
     def login(self):
         """Override in subclass. Should return True on success, False otherwise."""
@@ -54,7 +105,6 @@ class BaseScraper(ABC):
         pass
 
     def run_check(self):
-        """Orchestrates the whole check: driver init, Cloudflare bypass, login, slot check."""
         try:
             self._init_driver()
             self._bypass_cloudflare()
