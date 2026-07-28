@@ -2,10 +2,12 @@ import time
 import logging
 import io
 import base64
+import re
 import requests
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from PIL import Image
 from .base import BaseScraper
 from config import Config
@@ -34,19 +36,13 @@ class VFSScraper(BaseScraper):
 
     CAPTCHA_IMAGE_SELECTOR = (By.ID, "CaptchaImage")
 
-    # ---------- Slot detection keywords ----------
-    SLOT_POSITIVE_KEYWORDS = [
-        "book appointment",
-        "select appointment",
-        "available slots",
-        "slot available",
-        "reschedule appointment",
-        "choose date",
-        "calendar",
-        "book now",
-        "schedule appointment",
-    ]
+    # ---------- Appointment page URL (optional) ----------
+    APPOINTMENT_URL = None  # e.g., "https://visa.vfsglobal.com/usa/en/eoi/appointment"
 
+    # ---------- Center dropdown selectors ----------
+    CENTER_DROPDOWN_SELECTOR = (By.XPATH, "//select[contains(@name, 'center') or contains(@id, 'center')]")
+
+    # ---------- Slot detection keywords ----------
     SLOT_NEGATIVE_KEYWORDS = [
         "no appointments available",
         "no open seats",
@@ -56,15 +52,6 @@ class VFSScraper(BaseScraper):
         "unavailable",
         "all slots filled",
         "no availability",
-        "currently no appointment slots",
-        "no dates available",
-    ]
-
-    SLOT_POSITIVE_ELEMENTS = [
-        (By.XPATH, "//button[contains(text(),'Book') and not(@disabled)]"),
-        (By.XPATH, "//td[contains(@class, 'available')]"),
-        (By.XPATH, "//div[contains(@class, 'time-slot') and not(@disabled)]"),
-        (By.CSS_SELECTOR, ".slot-available"),
     ]
 
     # ---------- Cookie acceptance ----------
@@ -112,13 +99,19 @@ class VFSScraper(BaseScraper):
 
     # ---------- Navigate to appointment page ----------
     def _navigate_to_appointment_page(self):
+        if self.APPOINTMENT_URL:
+            logger.info(f"Navigating to appointment URL: {self.APPOINTMENT_URL}")
+            self.driver.get(self.APPOINTMENT_URL)
+            time.sleep(5)
+            return True
+
+        # Fallback: look for "Book Appointment" link
         appointment_link_selectors = [
             (By.XPATH, "//a[contains(text(),'Book Appointment')]"),
             (By.XPATH, "//a[contains(text(),'Schedule Appointment')]"),
             (By.XPATH, "//button[contains(text(),'Book Appointment')]"),
             (By.XPATH, "//a[contains(@href, 'appointment')]"),
             (By.XPATH, "//a[contains(@href, 'booking')]"),
-            (By.XPATH, "//a[contains(@href, 'schedule')]"),
         ]
         for by, value in appointment_link_selectors:
             try:
@@ -132,22 +125,7 @@ class VFSScraper(BaseScraper):
             except:
                 continue
 
-        # Try appending common paths
-        current_url = self.driver.current_url
-        common_paths = ["/appointment", "/dashboard", "/booking", "/schedule"]
-        for path in common_paths:
-            base = current_url.rstrip('/')
-            new_url = base + path
-            try:
-                self.driver.get(new_url)
-                logger.info(f"Tried navigating to: {new_url}")
-                time.sleep(5)
-                if "404" not in self.driver.title and "not found" not in self.driver.page_source.lower():
-                    return True
-            except:
-                continue
-
-        logger.warning("Could not navigate to appointment page automatically.")
+        logger.warning("Could not navigate to appointment page.")
         return False
 
     # ---------- CAPTCHA methods ----------
@@ -358,9 +336,33 @@ class VFSScraper(BaseScraper):
             logger.warning("Login unknown.")
             return False
 
-    # ---------- Slot Detection ----------
+    # ---------- Helper: get slot info from current page ----------
+    def _extract_slot_info(self):
+        """Extract all 'Earliest available slot' messages from the current page."""
+        page_source = self.driver.page_source
+        slot_pattern = r"Earliest available slot for (\d+) applicants? is : (\d{2}-\d{2}-\d{4})"
+        matches = re.findall(slot_pattern, page_source, re.IGNORECASE)
+        if matches:
+            slot_messages = []
+            for applicants, date in matches:
+                slot_messages.append(f"  {applicants} applicant(s): {date}")
+            return "\n".join(slot_messages)
+        else:
+            # Check for negative keywords
+            page_lower = page_source.lower()
+            for phrase in self.SLOT_NEGATIVE_KEYWORDS:
+                if phrase in page_lower:
+                    return "No slots available"
+            return None  # unknown
+
+    # ---------- Main slot check: loop over all centers ----------
     def check_slots(self):
+        """
+        Loop through all centers in the dropdown, extract slot info for each.
+        Returns (available, report_message) where available is True if ANY center has slots.
+        """
         try:
+            # Wait for page load
             WebDriverWait(self.driver, 20).until(
                 lambda d: d.execute_script("return document.readyState") == "complete"
             )
@@ -371,42 +373,72 @@ class VFSScraper(BaseScraper):
 
             # Navigate to appointment page if needed
             current_url = self.driver.current_url
-            if "appointment" not in current_url and "booking" not in current_url and "schedule" not in current_url:
-                logger.info("Not on appointment page. Attempting to navigate.")
+            if "appointment" not in current_url and "booking" not in current_url:
                 self._navigate_to_appointment_page()
 
-            # Wait for page load
+            # Wait for page to be ready
             WebDriverWait(self.driver, 20).until(
                 lambda d: d.execute_script("return document.readyState") == "complete"
             )
 
-            page_source = self.driver.page_source.lower()
+            # Locate the center dropdown
+            try:
+                dropdown = WebDriverWait(self.driver, 15).until(
+                    EC.presence_of_element_located(self.CENTER_DROPDOWN_SELECTOR)
+                )
+            except Exception as e:
+                logger.error(f"Center dropdown not found: {e}")
+                return False, "Center dropdown not found on the page."
 
-            # Negative keywords
-            for phrase in self.SLOT_NEGATIVE_KEYWORDS:
-                if phrase in page_source:
-                    logger.info(f"❌ No slots: '{phrase}' found.")
-                    return False
+            # Get all options
+            select = Select(dropdown)
+            options = select.options
+            if len(options) <= 1:
+                logger.warning("No center options found (only placeholder).")
+                return False, "No centers available."
 
-            # Positive keywords
-            for phrase in self.SLOT_POSITIVE_KEYWORDS:
-                if phrase in page_source:
-                    logger.info(f"✅ Slot available: '{phrase}' found.")
-                    return True
+            # Prepare report
+            report_lines = []
+            any_available = False
 
-            # Positive elements
-            for by, value in self.SLOT_POSITIVE_ELEMENTS:
-                try:
-                    elements = self.driver.find_elements(by, value)
-                    if elements and any(e.is_enabled() for e in elements):
-                        logger.info(f"✅ Found enabled element: {by}={value}")
-                        return True
-                except:
+            # Loop over options, skip placeholder (usually first with empty value)
+            for idx, option in enumerate(options):
+                center_name = option.text.strip()
+                if not center_name or center_name.lower() == "choose your application center":
                     continue
 
-            logger.warning("⚠️ No clear indicators; assuming no slots.")
-            return False
+                # Select this option
+                try:
+                    select.select_by_visible_text(center_name)
+                    logger.info(f"Selected center: {center_name}")
+                    time.sleep(2)  # allow page to update via AJAX
+                    # Wait for the slot info to update (or a loading indicator to disappear)
+                    # We'll just wait for the page to be 'stable' – you can add a specific wait if needed.
+                except Exception as e:
+                    logger.warning(f"Failed to select center '{center_name}': {e}")
+                    report_lines.append(f"Center: {center_name}  →  Error selecting")
+                    continue
+
+                # Extract slot info for this center
+                slot_info = self._extract_slot_info()
+                if slot_info is None:
+                    slot_info = "No clear slot information found"
+                elif "No slots" in slot_info or "no appointments" in slot_info.lower():
+                    slot_info = "No slots available"
+                else:
+                    any_available = True
+
+                report_lines.append(f"Center: {center_name}\n{slot_info}")
+                report_lines.append("")  # blank line separator
+
+            if not report_lines:
+                return False, "No centers processed."
+
+            report = "\n".join(report_lines).strip()
+            logger.info(f"Slot report:\n{report}")
+
+            return any_available, report
 
         except Exception as e:
-            logger.error(f"Error checking slots: {e}")
-            return False
+            logger.error(f"Error in check_slots: {e}")
+            return False, f"Error checking slots: {str(e)}"
