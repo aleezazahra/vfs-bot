@@ -13,12 +13,12 @@ from config import Config
 logger = logging.getLogger(__name__)
 
 class VFSScraper(BaseScraper):
+    # ---------- Login selectors ----------
     USERNAME_SELECTOR = (By.ID, "email")
     PASSWORD_SELECTOR = (By.ID, "password")
     CAPTCHA_INPUT_SELECTOR = (By.ID, "CaptchaInputText")
     LOGIN_SUCCESS_INDICATOR = "Reschedule Appointment"
 
-    # Updated button selectors (Angular VFS uses label="Sign In")
     LOGIN_BUTTON_SELECTORS = [
         (By.XPATH, "//button[@label='Sign In']"),
         (By.CSS_SELECTOR, "button[label='Sign In']"),
@@ -34,6 +34,40 @@ class VFSScraper(BaseScraper):
 
     CAPTCHA_IMAGE_SELECTOR = (By.ID, "CaptchaImage")
 
+    # ---------- Slot detection keywords ----------
+    SLOT_POSITIVE_KEYWORDS = [
+        "book appointment",
+        "select appointment",
+        "available slots",
+        "slot available",
+        "reschedule appointment",
+        "choose date",
+        "calendar",
+        "book now",
+        "schedule appointment",
+    ]
+
+    SLOT_NEGATIVE_KEYWORDS = [
+        "no appointments available",
+        "no open seats",
+        "there are no open seats available",
+        "fully booked",
+        "no slots",
+        "unavailable",
+        "all slots filled",
+        "no availability",
+        "currently no appointment slots",
+        "no dates available",
+    ]
+
+    SLOT_POSITIVE_ELEMENTS = [
+        (By.XPATH, "//button[contains(text(),'Book') and not(@disabled)]"),
+        (By.XPATH, "//td[contains(@class, 'available')]"),
+        (By.XPATH, "//div[contains(@class, 'time-slot') and not(@disabled)]"),
+        (By.CSS_SELECTOR, ".slot-available"),
+    ]
+
+    # ---------- Cookie acceptance ----------
     def _accept_cookies(self):
         cookie_selectors = [
             (By.XPATH, "//button[contains(text(),'Accept')]"),
@@ -55,6 +89,68 @@ class VFSScraper(BaseScraper):
             except:
                 continue
 
+    # ---------- Dismiss demo notice ----------
+    def _dismiss_demo_notice(self):
+        dismiss_selectors = [
+            (By.XPATH, "//button[contains(text(),'Dismiss')]"),
+            (By.XPATH, "//button[contains(text(),'Close')]"),
+            (By.XPATH, "//button[contains(text(),'OK')]"),
+            (By.CSS_SELECTOR, ".btn-dismiss"),
+            (By.CLASS_NAME, "close"),
+        ]
+        for by, value in dismiss_selectors:
+            try:
+                btn = WebDriverWait(self.driver, 3).until(
+                    EC.element_to_be_clickable((by, value))
+                )
+                btn.click()
+                logger.info(f"Dismissed demo notice with selector: {by}={value}")
+                time.sleep(0.5)
+                return
+            except:
+                continue
+
+    # ---------- Navigate to appointment page ----------
+    def _navigate_to_appointment_page(self):
+        appointment_link_selectors = [
+            (By.XPATH, "//a[contains(text(),'Book Appointment')]"),
+            (By.XPATH, "//a[contains(text(),'Schedule Appointment')]"),
+            (By.XPATH, "//button[contains(text(),'Book Appointment')]"),
+            (By.XPATH, "//a[contains(@href, 'appointment')]"),
+            (By.XPATH, "//a[contains(@href, 'booking')]"),
+            (By.XPATH, "//a[contains(@href, 'schedule')]"),
+        ]
+        for by, value in appointment_link_selectors:
+            try:
+                element = WebDriverWait(self.driver, 5).until(
+                    EC.element_to_be_clickable((by, value))
+                )
+                element.click()
+                logger.info(f"Clicked appointment link: {by}={value}")
+                time.sleep(5)
+                return True
+            except:
+                continue
+
+        # Try appending common paths
+        current_url = self.driver.current_url
+        common_paths = ["/appointment", "/dashboard", "/booking", "/schedule"]
+        for path in common_paths:
+            base = current_url.rstrip('/')
+            new_url = base + path
+            try:
+                self.driver.get(new_url)
+                logger.info(f"Tried navigating to: {new_url}")
+                time.sleep(5)
+                if "404" not in self.driver.title and "not found" not in self.driver.page_source.lower():
+                    return True
+            except:
+                continue
+
+        logger.warning("Could not navigate to appointment page automatically.")
+        return False
+
+    # ---------- CAPTCHA methods ----------
     def _find_captcha_image(self):
         try:
             img = WebDriverWait(self.driver, 10).until(
@@ -100,7 +196,7 @@ class VFSScraper(BaseScraper):
             response = requests.post('https://2captcha.com/in.php', data=payload, timeout=30)
             result = response.json()
             if result.get('status') != 1:
-                logger.error(f"2Captcha error: {result.get('request')}")
+                logger.error(f"2Captcha submit error: {result.get('request')}")
                 return None
             captcha_id = result['request']
             for _ in range(20):
@@ -117,7 +213,7 @@ class VFSScraper(BaseScraper):
                 elif poll_result.get('request') == 'CAPCHA_NOT_READY':
                     continue
                 else:
-                    logger.error(f"2Captcha error: {poll_result.get('request')}")
+                    logger.error(f"2Captcha poll error: {poll_result.get('request')}")
                     return None
             logger.error("2Captcha timeout")
             return None
@@ -145,9 +241,6 @@ class VFSScraper(BaseScraper):
     def _solve_captcha(self):
         captcha_img = self._find_captcha_image()
         if not captcha_img:
-            self.driver.save_screenshot("vfs_captcha_not_found.png")
-            with open("vfs_page_source.html", "w", encoding="utf-8") as f:
-                f.write(self.driver.page_source)
             logger.error("CAPTCHA image not found.")
             return None
 
@@ -162,6 +255,7 @@ class VFSScraper(BaseScraper):
         logger.error("All CAPTCHA solving methods failed.")
         return None
 
+    # ---------- Login ----------
     def login(self):
         if not self.username or not self.password:
             logger.info("No credentials; skipping login.")
@@ -169,7 +263,6 @@ class VFSScraper(BaseScraper):
 
         logger.info(f"VFS login URL: {self.driver.current_url}")
 
-        # Accept cookies
         self._accept_cookies()
         time.sleep(1)
 
@@ -180,9 +273,6 @@ class VFSScraper(BaseScraper):
             )
         except Exception as e:
             logger.error(f"Email field not found: {e}")
-            self.driver.save_screenshot("vfs_email_not_found.png")
-            with open("vfs_page_source.html", "w", encoding="utf-8") as f:
-                f.write(self.driver.page_source)
             return False
 
         email_field.clear()
@@ -213,22 +303,19 @@ class VFSScraper(BaseScraper):
                 logger.info("CAPTCHA filled.")
             except Exception as e:
                 logger.error(f"CAPTCHA input field not found: {e}")
-                self.driver.save_screenshot("vfs_captcha_input_error.png")
                 return False
         else:
             logger.warning("No CAPTCHA text – skipping fill.")
 
-        # Click the Sign In button
+        # Click Sign In
         button_clicked = False
         for by, value in self.LOGIN_BUTTON_SELECTORS:
             try:
                 btn = WebDriverWait(self.driver, 5).until(
                     EC.presence_of_element_located((by, value))
                 )
-                # Scroll to button
                 self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
                 time.sleep(0.5)
-                # Try normal click, fallback to JavaScript
                 try:
                     btn.click()
                 except:
@@ -243,7 +330,6 @@ class VFSScraper(BaseScraper):
 
         if not button_clicked:
             try:
-                # Last resort: press Enter on captcha input
                 captcha_input.send_keys("\n")
                 logger.info("Pressed Enter on captcha input.")
             except:
@@ -269,22 +355,58 @@ class VFSScraper(BaseScraper):
             logger.warning("Account locked.")
             return False
         else:
-            logger.warning("Login unknown. Saving screenshot.")
-            self.driver.save_screenshot("vfs_login_unknown.png")
+            logger.warning("Login unknown.")
             return False
 
+    # ---------- Slot Detection ----------
     def check_slots(self):
         try:
-            WebDriverWait(self.driver, 30).until(
+            WebDriverWait(self.driver, 20).until(
                 lambda d: d.execute_script("return document.readyState") == "complete"
             )
+
+            # Dismiss demo notice
+            self._dismiss_demo_notice()
+            time.sleep(1)
+
+            # Navigate to appointment page if needed
+            current_url = self.driver.current_url
+            if "appointment" not in current_url and "booking" not in current_url and "schedule" not in current_url:
+                logger.info("Not on appointment page. Attempting to navigate.")
+                self._navigate_to_appointment_page()
+
+            # Wait for page load
+            WebDriverWait(self.driver, 20).until(
+                lambda d: d.execute_script("return document.readyState") == "complete"
+            )
+
             page_source = self.driver.page_source.lower()
-            if "there are no open seats available" in page_source:
-                logger.info("No appointments available.")
-                return False
-            else:
-                logger.info("Potential slots available.")
-                return True
+
+            # Negative keywords
+            for phrase in self.SLOT_NEGATIVE_KEYWORDS:
+                if phrase in page_source:
+                    logger.info(f"❌ No slots: '{phrase}' found.")
+                    return False
+
+            # Positive keywords
+            for phrase in self.SLOT_POSITIVE_KEYWORDS:
+                if phrase in page_source:
+                    logger.info(f"✅ Slot available: '{phrase}' found.")
+                    return True
+
+            # Positive elements
+            for by, value in self.SLOT_POSITIVE_ELEMENTS:
+                try:
+                    elements = self.driver.find_elements(by, value)
+                    if elements and any(e.is_enabled() for e in elements):
+                        logger.info(f"✅ Found enabled element: {by}={value}")
+                        return True
+                except:
+                    continue
+
+            logger.warning("⚠️ No clear indicators; assuming no slots.")
+            return False
+
         except Exception as e:
             logger.error(f"Error checking slots: {e}")
             return False
