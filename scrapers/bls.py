@@ -9,7 +9,7 @@ class BLSScraper(BaseScraper):
     def login(self):
         if not self.username or not self.password:
             logger.info("No BLS credentials provided; skipping login.")
-            return
+            return True
         try:
             # Adjust selectors to BLS login.
             username_field = self.driver.find_element("name", "email")
@@ -20,8 +20,10 @@ class BLSScraper(BaseScraper):
             login_btn.click()
             time.sleep(3)
             logger.info("BLS login submitted.")
+            return True
         except Exception as e:
             logger.warning(f"BLS login failed: {e}")
+            return False
 
     def check_slots(self):
         try:

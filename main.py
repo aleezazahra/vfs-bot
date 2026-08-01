@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 import logging
-from notifier import run_bot
+from gui import run_app
 
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
-    run_bot()
+    run_app()

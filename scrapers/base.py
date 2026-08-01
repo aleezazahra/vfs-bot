@@ -1,10 +1,13 @@
 import time
 import logging
+import json
+import os
 from abc import ABC, abstractmethod
 from seleniumbase import Driver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +23,61 @@ class BaseScraper(ABC):
     def _init_driver(self):
         self.driver = Driver(uc=True, headless=self.headless)
         self.driver.maximize_window()
+
+    # ---------- Session persistence (cookies + localStorage) ----------
+    def _session_file(self):
+        name = self.__class__.__name__.lower()
+        return os.path.join(Config.PROFILE_DIR, f"{name}_session.json")
+
+    def _save_session(self):
+        """Persist cookies + localStorage so future runs can skip login/OTP."""
+        try:
+            data = {
+                "cookies": self.driver.get_cookies(),
+                "local_storage": self.driver.execute_script(
+                    "return JSON.stringify(window.localStorage);"
+                ),
+            }
+            os.makedirs(Config.PROFILE_DIR, exist_ok=True)
+            with open(self._session_file(), "w") as f:
+                json.dump(data, f)
+            logger.info(f"Session saved to {self._session_file()}")
+        except Exception as e:
+            logger.warning(f"Could not save session: {e}")
+
+    def _load_session(self):
+        """Restore a previously saved session onto the current driver."""
+        if not self.url or not os.path.exists(self._session_file()):
+            return False
+        try:
+            with open(self._session_file()) as f:
+                data = json.load(f)
+            # Must be on the domain before cookies can be added
+            self.driver.get(self.url)
+            self._wait_for_page_load(10)
+            for cookie in data.get("cookies", []):
+                try:
+                    self.driver.add_cookie(cookie)
+                except Exception:
+                    continue
+            ls = data.get("local_storage")
+            if ls:
+                try:
+                    self.driver.execute_script(
+                        "var ls = JSON.parse(arguments[0]);"
+                        "window.localStorage.clear();"
+                        "for (var k in ls) { window.localStorage.setItem(k, ls[k]); }",
+                        ls,
+                    )
+                except Exception:
+                    pass
+            self.driver.refresh()
+            self._wait_for_page_load(10)
+            logger.info("Session loaded from file.")
+            return True
+        except Exception as e:
+            logger.info(f"No usable saved session: {e}")
+            return False
 
     def _wait_for_page_load(self, timeout=30):
         try:
@@ -107,12 +165,21 @@ class BaseScraper(ABC):
     def run_check(self):
         try:
             self._init_driver()
+            self._load_session()
             self._bypass_cloudflare()
             login_success = self.login()
             if not login_success:
                 return False, "Login failed."
-            available = self.check_slots()
-            msg = "✅ Slots AVAILABLE!" if available else "❌ No slots."
+            self._save_session()
+            result = self.check_slots()
+            if isinstance(result, tuple) and len(result) == 2:
+                available, report = result
+            else:
+                available, report = bool(result), ""
+            if available:
+                msg = f"✅ Slots AVAILABLE!\n{report}"
+            else:
+                msg = f"❌ No slots.\n{report}"
             return available, msg
         except Exception as e:
             logger.error(f"Error during check: {e}")

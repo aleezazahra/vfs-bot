@@ -1,1 +1,6 @@
 .env
+profiles/
+gui_config.json
+__pycache__/
+*.pyc
+captcha.png

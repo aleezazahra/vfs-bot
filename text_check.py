@@ -31,7 +31,8 @@ def main():
                 username=Config.VFS_USERNAME,
                 password=Config.VFS_PASSWORD,
                 url=Config.VFS_URL,
-                headless=False  # set to True if you want headless during test
+                appointment_url=Config.VFS_APPOINTMENT_URL,
+                headless=Config.HEADLESS  # set True via HEADLESS=true in .env
             ))
         elif arg == "tls" and Config.TLS_URL:
             scrapers.append(TLSScraper(
@@ -57,7 +58,8 @@ def main():
                 username=Config.VFS_USERNAME,
                 password=Config.VFS_PASSWORD,
                 url=Config.VFS_URL,
-                headless=False
+                appointment_url=Config.VFS_APPOINTMENT_URL,
+                headless=Config.HEADLESS
             ))
         if Config.TLS_URL:
             scrapers.append(TLSScraper(
