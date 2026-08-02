@@ -70,7 +70,7 @@ class VFSScraper(BaseScraper):
             "all slots filled",
             "no availability",
         ]
-        self.slot_pattern = r"Earliest available slot for (\d+) applicants? is : (\d{2}-\d{2}-\d{4})"
+        self.slot_pattern = r"Earliest\s+available\s+slot\s+for\s+(\d+)\s*applicants?\s*is\s*:?\s*(\d{2}-\d{2}-\d{4})"
 
     # ---------- Helper: random human-like delay ----------
     def _human_delay(self, min_sec=0.5, max_sec=1.5):

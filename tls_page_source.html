@@ -1,0 +1,289 @@
+<html xmlns="http://www.w3.org/1999/xhtml" class=""><head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+
+    <title>Sign in to TLScontact</title>
+    <link rel="icon" href="/auth/resources/kozhl/login/web/img/favicon.ico">
+    <link rel="stylesheet" href="https://ui.visas-fr.tlscontact.com/tikui.css">
+    <style>
+        .tls-navbar .tls-navbar--content {justify-content: space-between !important;}
+        .tls-navbar--links.-opened {z-index: 0;}
+        .tls-register .tls-navbar--slot .tls-dropdown {display: initial;}
+        .tls-dropdown-list {background-color:#ffffff !important;}
+    </style>
+  </head>
+
+
+  <body class="">
+
+  <script src="https://unpkg.com/@directus/sdk-js@5.3.4/dist/directus-sdk.umd.min.js"></script>
+  <script type="text/javascript">
+      window.directus = {
+          endpoint: 'https://cache-cms.visas-fr.tlscontact.com',
+      };
+
+      const directusSDKClient = new DirectusSDK({
+          url: window['directus'].endpoint,
+          project: '_'
+      });
+      const languageCode = {
+          ar: 'ar-ar',
+          fa: 'fa-ir',
+          cb_ph: 'cb-ph',
+          de: 'de-de',
+          du: 'du-du',
+          en: 'en-us',
+          fr: 'fr-fr',
+          hy: 'hy-hy',
+          id: 'id-id',
+          it: 'it-it',
+          km_kh: 'km-kh',
+          mk: 'mk-mk',
+          nl: 'nl-be',
+          pl: 'pl-pl',
+          ru: 'ru-ru',
+          sq_al: 'sq-al',
+          sq: 'sq-sq',
+          sr_ba: 'sr-ba',
+          th: 'th-th',
+          tl_ph: 'tl-ph',
+          tr: 'tr-tr',
+          uk: 'uk-ua',
+          uz: 'uz-uz',
+          vi: 'vi-vn',
+          zh: 'zh-cn'
+      }
+      const searchParams = new URLSearchParams(window.location.search);
+      const lang = (searchParams.get('kc_locale') || navigator.language.split('-')[0]).toLowerCase();
+      let language = languageCode.hasOwnProperty(lang) ? languageCode[lang] : languageCode["en"];
+      function HTMLDecode(text) {
+          var temp = document.createElement("div");
+          temp.innerHTML = text;
+          var output = temp.innerText || temp.textContent;
+          temp = null;
+          return output;
+      }
+  </script>
+
+  <div class=" tls-register">
+    <div class="tls-navbar">
+      <div class="tls-navbar--content">
+        <div class="tls-navbar--logo">
+          <a class="tls-logo">
+            <img class="tls-logo--img" src="/auth/resources/kozhl/login/web/img/tls-logo.svg" alt="tls-logo">
+          </a>
+        </div>
+        <div class="tls-navbar--links -closed" id="tlsNavbarLinks"></div>
+          <div class="tls-navbar--slot">
+            <div class="tls-dropdown" onmouseover="chevronUp(this)" onmouseout="chevronDown(this)">
+              <a class="tls-link-dropdown">
+                <div class="tls-link-dropdown--text">English</div>
+                <div class="tls-link-dropdown--icon">    
+                  <img src="/auth/resources/kozhl/login/web/img/chevron-down.svg" alt="">    
+                </div>
+              </a>
+              <div class="tls-dropdown--content" style="display:none;">
+                <div class="tls-dropdown-list">
+                    <a href="/auth/realms/atlas/protocol/openid-connect/auth?kc_locale=km" class="tls-dropdown-list--slot tls-dropdown-text router-link-exact-active router-link-active">  
+                      km
+                    </a>
+                    <a href="/auth/realms/atlas/protocol/openid-connect/auth?kc_locale=ru" class="tls-dropdown-list--slot tls-dropdown-text router-link-exact-active router-link-active">  
+                      Русский
+                    </a>
+                    <a href="/auth/realms/atlas/protocol/openid-connect/auth?kc_locale=uz" class="tls-dropdown-list--slot tls-dropdown-text router-link-exact-active router-link-active">  
+                      Uzbek 
+                    </a>
+                    <a href="/auth/realms/atlas/protocol/openid-connect/auth?kc_locale=en" class="tls-dropdown-list--slot tls-dropdown-text router-link-exact-active router-link-active">  
+                      English
+                    </a>
+                    <a href="/auth/realms/atlas/protocol/openid-connect/auth?kc_locale=fr" class="tls-dropdown-list--slot tls-dropdown-text router-link-exact-active router-link-active">  
+                      Français
+                    </a>
+                    <a href="/auth/realms/atlas/protocol/openid-connect/auth?kc_locale=zh" class="tls-dropdown-list--slot tls-dropdown-text router-link-exact-active router-link-active">  
+                      中文
+                    </a>
+                    <a href="/auth/realms/atlas/protocol/openid-connect/auth?kc_locale=ar" class="tls-dropdown-list--slot tls-dropdown-text router-link-exact-active router-link-active">  
+                      العربية
+                    </a>
+                    <a href="/auth/realms/atlas/protocol/openid-connect/auth?kc_locale=hy" class="tls-dropdown-list--slot tls-dropdown-text router-link-exact-active router-link-active">  
+                      Armenian
+                    </a>
+                    <a href="/auth/realms/atlas/protocol/openid-connect/auth?kc_locale=vi" class="tls-dropdown-list--slot tls-dropdown-text router-link-exact-active router-link-active">  
+                      Vietnamese
+                    </a>
+                    <a href="/auth/realms/atlas/protocol/openid-connect/auth?kc_locale=th" class="tls-dropdown-list--slot tls-dropdown-text router-link-exact-active router-link-active">  
+                      ภาษาไทย
+                    </a>
+                    <a href="/auth/realms/atlas/protocol/openid-connect/auth?kc_locale=tl" class="tls-dropdown-list--slot tls-dropdown-text router-link-exact-active router-link-active">  
+                      tl
+                    </a>
+                    <a href="/auth/realms/atlas/protocol/openid-connect/auth?kc_locale=id" class="tls-dropdown-list--slot tls-dropdown-text router-link-exact-active router-link-active">  
+                      Bahasa Indonesia
+                    </a>
+                    <a href="/auth/realms/atlas/protocol/openid-connect/auth?kc_locale=mk" class="tls-dropdown-list--slot tls-dropdown-text router-link-exact-active router-link-active">  
+                      Macedonian
+                    </a>
+                    <a href="/auth/realms/atlas/protocol/openid-connect/auth?kc_locale=sq" class="tls-dropdown-list--slot tls-dropdown-text router-link-exact-active router-link-active">  
+                      Shquiptar
+                    </a>
+                    <a href="/auth/realms/atlas/protocol/openid-connect/auth?kc_locale=cb" class="tls-dropdown-list--slot tls-dropdown-text router-link-exact-active router-link-active">  
+                      cb
+                    </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        <div class="tls-navbar--hamburger" id="tlsNavbarHamburger">
+          <div class="tls-hamburger -state-closed" id="tlsHamburger">
+            <div class="tls-hamburger--top-line"></div> 
+            <div class="tls-hamburger--middle-line"></div> 
+            <div class="tls-hamburger--bottom-line"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class=" ">
+      <div class="tls-simple-banner">
+        <div class="tls-home-text-group">
+          <h1 class="tls-heading-1" id="kc-page-title">
+    We are sorry...
+          </h1>
+        </div>
+      </div>
+
+      <div class="tls-register-content">
+        <div class="tls-large-card-info">
+          <div class="tls-card-lg">
+            <div class="tls-simple-text -size-16 center">
+    <p id="kc-page-description">
+      Please try to login with your account as so to receive a new activation email.
+    </p>
+            </div>
+          </div>
+          <div class="tls-large-card-info--decoration">
+            <div class="tls-decoration-vertical-lines -blue">
+              <div class="tls-line1"></div>
+              <div class="tls-line2"></div>
+            </div>
+          </div>
+        </div>
+
+
+    <div id="kc-error-message">
+      <p class="instruction">Invalid Request</p>
+      <p><a id="backToApplication" href="https://visas-fr.tlscontact.com">« Back to Application</a></p>
+    </div>
+    
+
+      </div>
+
+    </div>
+  </div>
+
+
+  <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon="{&quot;version&quot;:&quot;2024.11.0&quot;,&quot;token&quot;:&quot;9ef1911bcdeb4feebca92a9083af1b7e&quot;}" crossorigin="anonymous"></script>
+
+  <script>
+    let param = window.location.href.split("&issuer=");
+    let issuer = country = "";
+    if (param.length === 2) {
+        issuer = param[1].toString();
+        country = issuer.substr(0, 2);
+        localStorage.setItem("issuer", issuer);
+        localStorage.setItem("country", country);
+    } else {
+        issuer = localStorage.getItem("issuer");
+        country = localStorage.getItem("country");
+    }
+    if (issuer && country) {
+      document.getElementsByClassName("tls-logo")[0].href="https://visas-fr.tlscontact.com" + "/visa/" + country + "/" + issuer + "/home";
+      if (document.getElementById("form-back-homepage")) {
+        document.getElementById("form-back-homepage").href="https://visas-fr.tlscontact.com" + "/visa/" + country + "/" + issuer + "/home";
+      }
+    }
+
+    // Generate navbar navigation bar
+    let navbarFilter = { 'application_center.code': {'eq': localStorage.getItem("issuer")}, 'status': {'eq': 'published'}};
+    directusSDKClient
+        .getItems('navbar', { fields: '*.*', filter: navbarFilter, lang: language })
+        .then(response => {
+            if (response.data.length > 0 && response.data[0].translation.length > 0) {
+                const translation = response.data[0].translation[0];
+                let navbarHtml = '';
+                Object.keys(translation.menu).forEach(function (key) {
+                    if (translation.menu[key].hasOwnProperty('items')) {
+                        navbarHtml += this.createDropDownNavbar(translation.menu[key].title, translation.menu[key].items);
+                    } else {
+                        navbarHtml += this.createNormalNavbar(translation.menu[key].link, translation.menu[key].title);
+                    }
+                });
+                document.getElementsByClassName('tls-navbar--links')[0].innerHTML += navbarHtml;
+            } else {
+                console.error('Error while loading translation');
+            }
+        })
+        .catch(error => {
+            console.error(error);
+        });
+
+    function chevronUp (element) {
+        element.getElementsByTagName('img')[0].src = "/auth/resources/kozhl/login/web/img/chevron-up.svg";
+        element.lastElementChild.removeAttribute('style');
+    }
+    function chevronDown(element) {
+        element.getElementsByTagName('img')[0].src = "/auth/resources/kozhl/login/web/img/chevron-down.svg";
+        element.lastElementChild.setAttribute('style', 'display:none');
+    }
+
+    function createNormalNavbar(link, title) {
+        let html = '';
+        html += '<a href="https://visas-fr.tlscontact.com' + link + '" class="tls-link-dropdown">' + title + '</a>';
+        return '<div class="tls-navbar--slot"><div class="tls-dropdown">'+html+'</div></div>';
+    }
+
+    function createDropDownNavbar(title, items) {
+        let html = '';
+        let navbarTiele = '<a class="tls-link-dropdown">' +
+            '    <div class="tls-link-dropdown--text">' + title + '</div>' +
+            '    <div class="tls-link-dropdown--icon">' +
+            '    <img src="/auth/resources/kozhl/login/web/img/chevron-down.svg" alt="">' +
+            '    </div>' +
+            '</a>';
+
+        var HideContent = '';
+        Object.keys(items).forEach(function (key) {
+            HideContent += '<div class="tls-dropdown-list--slot">' +
+                '    <a href="https://visas-fr.tlscontact.com' + items[key].link + '" class="tls-dropdown-text router-link-exact-active router-link-active">' + items[key].title + '</a>' +
+                '</div>';
+        });
+        html += '<div class="tls-navbar--slot"><div class="tls-dropdown" onmouseover="chevronUp(this)" onmouseout="chevronDown(this)">'+ navbarTiele +'<div class="tls-dropdown--content" style="display: none"><div class="tls-dropdown-list">' + HideContent + '</div></div></div></div>';
+
+        return html;
+    }
+
+    window.addEventListener('click', function (event) {
+      if (document.getElementById('tlsNavbarHamburger').contains(event.target)) {
+        hamburgerToggle();
+        event.stopPropagation();
+      } else {
+        if (!document.getElementById("tlsHamburger").classList.contains('-state-closed')) {
+          hamburgerToggle();
+          event.stopPropagation();
+        }
+      }
+    });
+
+    function hamburgerToggle() {
+      var hamburgerItems = document.getElementById("tlsHamburger");
+      hamburgerItems.classList.toggle("-state-closed");
+      hamburgerItems.classList.toggle("-state-opened");
+
+      var navbarLinksItems = document.getElementById("tlsNavbarLinks");
+      navbarLinksItems.classList.toggle("-closed");
+      navbarLinksItems.classList.toggle("-opened");
+    }
+  </script>
+  
+</body></html>
