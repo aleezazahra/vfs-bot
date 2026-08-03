@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Desktop GUI to check visa appointment slots on VFS, TLS and BLS websites.
+Desktop GUI to check visa appointment slots on the VFS Global website.
 
 Users enter the provider, the login link for the account they created, their
 credentials and a check interval. The app scrapes slot availability in the
@@ -17,7 +17,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
 
 from config import Config  # noqa: F401  (loads .env for the scrapers)
-from scrapers import VFSScraper, TLSScraper, BLSScraper
+from scrapers import VFSScraper
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +25,24 @@ CONFIG_FILE = "gui_config.json"
 
 PROVIDERS = {
     "VFS": {"cls": VFSScraper, "needs_appointment_url": True},
-    "TLS": {"cls": TLSScraper, "needs_appointment_url": False},
-    "BLS": {"cls": BLSScraper, "needs_appointment_url": False},
 }
+
+
+class QueueLogHandler(logging.Handler):
+    """Forward every log record (login, captcha, cloudflare, slots, ...) to a
+    thread-safe queue that the GUI polls and prints in the log panel."""
+
+    def __init__(self, queue):
+        super().__init__()
+        self.queue = queue
+        self.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s",
+                                            datefmt="%H:%M:%S"))
+
+    def emit(self, record):
+        try:
+            self.queue.put(self.format(record))
+        except Exception:
+            pass
 
 
 class SlotCheckerApp:
@@ -49,15 +64,23 @@ class SlotCheckerApp:
 
         # Threading / UI communication
         self.log_queue = queue.Queue()
+        self.log_messages = queue.Queue()
         self.busy = threading.Lock()
         self.stop_event = threading.Event()
         self.monitor_thread = None
+
+        # Forward all scraper logs (login, captcha, cloudflare, slots) to the GUI.
+        root_logger = logging.getLogger()
+        if not any(isinstance(h, QueueLogHandler) for h in root_logger.handlers):
+            root_logger.setLevel(logging.INFO)
+            root_logger.addHandler(QueueLogHandler(self.log_messages))
 
         self._build_ui()
         self._load_config()
         self._refresh_provider_fields()
 
         self.root.after(100, self._poll_queue)
+        self.root.after(100, self._poll_logs)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
     # ------------------------------------------------------------------ UI
@@ -145,12 +168,25 @@ class SlotCheckerApp:
         self.log_text.see(tk.END)
         self.log_text.configure(state=tk.DISABLED)
 
+    def _poll_logs(self):
+        try:
+            while True:
+                self._log(self.log_messages.get_nowait())
+        except queue.Empty:
+            pass
+        self.root.after(100, self._poll_logs)
+
     def _poll_queue(self):
         try:
             while True:
                 available, msg, provider = self.log_queue.get_nowait()
                 self._log(msg)
-                if available:
+                lower = msg.lower()
+                if "login failed" in lower:
+                    self.status_var.set(f"{provider}: LOGIN FAILED - check credentials.")
+                elif f"[{provider.lower()}] error" in lower:
+                    self.status_var.set(f"{provider}: check error - see log.")
+                elif available:
                     self.status_var.set(f"{provider}: SLOTS AVAILABLE!")
                     messagebox.showinfo("Slots Available!", msg)
                 else:

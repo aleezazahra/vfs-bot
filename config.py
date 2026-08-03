@@ -13,21 +13,10 @@ class Config:
 
     # Defaults for CLI testing via text_check.py (the GUI stores per-user
     # settings in gui_config.json instead).
-    # VFS
     VFS_USERNAME = os.getenv("VFS_USERNAME")
     VFS_PASSWORD = os.getenv("VFS_PASSWORD")
     VFS_URL = os.getenv("VFS_URL")
     VFS_APPOINTMENT_URL = os.getenv("VFS_APPOINTMENT_URL")
-
-    # TLS
-    TLS_USERNAME = os.getenv("TLS_USERNAME")
-    TLS_PASSWORD = os.getenv("TLS_PASSWORD")
-    TLS_URL = os.getenv("TLS_URL")
-
-    # BLS
-    BLS_USERNAME = os.getenv("BLS_USERNAME")
-    BLS_PASSWORD = os.getenv("BLS_PASSWORD")
-    BLS_URL = os.getenv("BLS_URL")
 
     # Optional: headless mode for CLI tests (default False for debugging)
     HEADLESS = os.getenv("HEADLESS", "false").lower() == "true"

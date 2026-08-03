@@ -40,7 +40,10 @@ class VFSScraper(BaseScraper):
             (By.XPATH, "//button[contains(@class, 'submit')]"),
         ]
         self.center_dropdown_selector = (
-            By.XPATH, "//select[contains(@name, 'center') or contains(@id, 'center')]"
+            By.XPATH, "//select[contains(@name, 'center') or contains(@id, 'center') "
+                      "or contains(@name, 'country') or contains(@id, 'country') "
+                      "or contains(@name, 'selectedcountry') or contains(@id, 'selectedcountry') "
+                      "or contains(@name, 'visa') or contains(@id, 'visa')]"
         )
         self.login_success_indicators = [
             "Reschedule Appointment",
@@ -48,6 +51,39 @@ class VFSScraper(BaseScraper):
             "My Applications",
             "Dashboard",
             "Logout",
+        ]
+        self.login_success_selectors = [
+            (By.XPATH, "//a[contains(text(),'Logout')]"),
+            (By.XPATH, "//button[contains(text(),'Logout')]"),
+            (By.XPATH, "//a[contains(text(),'Sign Out')]"),
+            (By.XPATH, "//button[contains(text(),'Sign Out')]"),
+            (By.XPATH, "//a[contains(@href,'logout') or contains(@href,'signout')]"),
+            (By.XPATH, "//span[contains(text(),'My Applications')]"),
+            (By.XPATH, "//a[contains(text(),'My Applications')]"),
+            (By.XPATH, "//a[contains(text(),'Book Appointment')]"),
+            (By.XPATH, "//button[contains(text(),'Book Appointment')]"),
+            (By.XPATH, "//a[contains(text(),'Reschedule Appointment')]"),
+            (By.XPATH, "//button[contains(text(),'Reschedule Appointment')]"),
+        ]
+        self.login_error_keywords = [
+            "invalid login credentials",
+            "invalid credentials",
+            "invalid email or password",
+            "invalid username or password",
+            "email or password is incorrect",
+            "username or password is incorrect",
+            "incorrect email",
+            "incorrect password",
+            "wrong password",
+            "login failed",
+            "authentication failed",
+            "please check your credentials",
+            "credentials are incorrect",
+            "your account has been locked",
+            "account has been locked",
+            "too many login attempts",
+            "too many attempts",
+            "access denied",
         ]
         self.otp_input_selectors = [
             (By.ID, "otp"),
@@ -66,9 +102,9 @@ class VFSScraper(BaseScraper):
             "there are no open seats available",
             "fully booked",
             "no slots",
-            "unavailable",
             "all slots filled",
             "no availability",
+            "no seat",
         ]
         self.slot_pattern = r"Earliest\s+available\s+slot\s+for\s+(\d+)\s*applicants?\s*is\s*:?\s*(\d{2}-\d{2}-\d{4})"
 
@@ -156,7 +192,68 @@ class VFSScraper(BaseScraper):
             except:
                 continue
 
+        # VFS EOI flow: after login you click the orange "Create Application"
+        # button, which opens the appointment page with the dropdown menus.
+        application_link_selectors = [
+            (By.XPATH, "//button[contains(@class, 'btn-brand-orange')]"),
+            (By.CSS_SELECTOR, "button.btn-brand-orange"),
+            (By.XPATH, "//button[contains(text(),'Create Application')]"),
+            (By.XPATH, "//button[contains(text(),'New Application')]"),
+            (By.XPATH, "//a[contains(text(),'Create Application')]"),
+            (By.XPATH, "//a[contains(text(),'New Application')]"),
+            (By.XPATH, "//a[contains(text(),'Create an application')]"),
+            (By.XPATH, "//a[contains(text(),'Start New Application')]"),
+            (By.XPATH, "//a[contains(text(),'My Applications')]"),
+            (By.XPATH, "//a[contains(@href, 'application')]"),
+        ]
+        for by, value in application_link_selectors:
+            try:
+                element = WebDriverWait(self.driver, 5).until(
+                    EC.element_to_be_clickable((by, value))
+                )
+                element.click()
+                logger.info(f"Clicked application link: {by}={value}")
+                self._wait_for_page_load()
+                self._human_delay(2, 4)
+                self._switch_to_new_tab()
+                # After creating an application we should now be on the
+                # appointment/booking page – if not, try the appointment links.
+                current_url = self.driver.current_url or ""
+                if "appointment" in current_url or "booking" in current_url:
+                    return True
+                if self._find_country_dropdown(timeout=5) is not None:
+                    return True
+                for by2, value2 in appointment_link_selectors:
+                    try:
+                        el2 = WebDriverWait(self.driver, 3).until(
+                            EC.element_to_be_clickable((by2, value2))
+                        )
+                        el2.click()
+                        logger.info(f"Clicked appointment link: {by2}={value2}")
+                        self._wait_for_page_load()
+                        self._human_delay(2, 4)
+                        return True
+                    except:
+                        continue
+                return True
+            except:
+                continue
+
         logger.warning("Could not navigate to appointment page.")
+        return False
+
+    def _switch_to_new_tab(self):
+        """If clicking opened a new browser tab, switch to it."""
+        try:
+            handles = self.driver.window_handles
+            if len(handles) > 1:
+                self.driver.switch_to.window(handles[-1])
+                self._wait_for_page_load(10)
+                self._human_delay(1, 2)
+                logger.info(f"Switched to new tab: {self.driver.current_url}")
+                return True
+        except Exception:
+            pass
         return False
 
     # ---------- CAPTCHA methods ----------
@@ -265,13 +362,79 @@ class VFSScraper(BaseScraper):
         return None
 
     # ---------- Login ----------
+    def _is_login_page(self):
+        """Return True if the login form (email + password fields) is still visible."""
+        try:
+            email = self.driver.find_element(*self.username_selector)
+            password = self.driver.find_element(*self.password_selector)
+            return email.is_displayed() and password.is_displayed()
+        except Exception:
+            return False
+
+    def _get_login_error(self):
+        """Return the first VISIBLE login error message shown while the login
+        form is still on screen, else None. Only meaningful during a failed
+        login – once the form is gone the login has already succeeded."""
+        if not self._is_login_page():
+            return None
+        error_container_selectors = [
+            (By.XPATH, "//div[contains(@class, 'error') or contains(@class, 'alert') "
+                       "or contains(@class, 'warning') or contains(@class, 'notification')]"),
+            (By.XPATH, "//span[contains(@class, 'error') or contains(@class, 'alert')]"),
+            (By.XPATH, "//p[contains(@class, 'error') or contains(@class, 'alert')]"),
+            (By.XPATH, "//small[contains(@class, 'error')]"),
+            (By.XPATH, "//li[contains(@class, 'error')]"),
+            (By.TAG_NAME, "mat-error"),
+            (By.TAG_NAME, "p-toast"),
+        ]
+        for by, value in error_container_selectors:
+            try:
+                for element in self.driver.find_elements(by, value):
+                    if not element.is_displayed():
+                        continue
+                    text = (element.text or "").strip().lower()
+                    if not text:
+                        continue
+                    for keyword in self.login_error_keywords:
+                        if keyword in text:
+                            return keyword
+            except Exception:
+                continue
+        return None
+
+    def _login_succeeded(self, driver=None):
+        """Robustly determine whether the current page is a logged-in session.
+
+        The primary signal is the state of the login form: if the email/password
+        fields are still visible we are NOT logged in. Otherwise we look for an
+        actual dashboard element. The URL is not trusted because VFS dashboard
+        URLs frequently still contain '/login'."""
+        driver = driver or self.driver
+        if self._is_login_page():
+            return False
+        for by, value in self.login_success_selectors:
+            try:
+                element = driver.find_element(by, value)
+                if element.is_displayed():
+                    return True
+            except Exception:
+                continue
+        page_source = driver.page_source or ""
+        return any(ind in page_source for ind in self.login_success_indicators)
+
     def _is_logged_in(self):
         """Return True if the current page already looks like a logged-in session."""
-        current_url = (self.driver.current_url or "").lower()
-        if "login" in current_url or "signin" in current_url:
-            return False
-        page_source = self.driver.page_source or ""
-        return any(ind in page_source for ind in self.login_success_indicators)
+        return self._login_succeeded()
+
+    def _save_login_debug(self):
+        """Save a screenshot + page source when login fails, for debugging."""
+        try:
+            self.driver.save_screenshot("vfs_login_fail.png")
+            with open("vfs_login_page.html", "w", encoding="utf-8") as f:
+                f.write(self.driver.page_source or "")
+            logger.info("Saved debug files: vfs_login_fail.png, vfs_login_page.html")
+        except Exception as e:
+            logger.warning(f"Could not save login debug files: {e}")
 
     def _find_otp_field(self, timeout=8):
         for by, value in self.otp_input_selectors:
@@ -337,7 +500,11 @@ class VFSScraper(BaseScraper):
                 logger.error(f"CAPTCHA input field not found: {e}")
                 return False
         else:
-            logger.warning("No CAPTCHA text – skipping fill.")
+            logger.warning(
+                "CAPTCHA could not be solved (no 2Captcha key / OCR failed). "
+                "Submitting without CAPTCHA – VFS will likely reject the login. "
+                "Set CAPTCHA_API_KEY in .env for reliable solving."
+            )
 
         # Click Sign In
         button_clicked = False
@@ -383,80 +550,200 @@ class VFSScraper(BaseScraper):
                 "window (first-time setup only – the session is then saved)."
             )
             try:
-                WebDriverWait(self.driver, 240).until(
-                    lambda d: any(ind in (d.page_source or "")
-                                  for ind in self.login_success_indicators)
-                )
+                WebDriverWait(self.driver, 240).until(self._login_succeeded)
                 logger.info("Login successful after OTP.")
                 return True
             except TimeoutException:
                 logger.warning("OTP not completed in time.")
                 return False
 
-        # Check login outcome (wait for a dashboard indicator to appear)
-        page_source = self.driver.page_source
-        if "The verification words are incorrect" in page_source:
+        # Check login outcome
+        page_source = (self.driver.page_source or "").lower()
+        if self._is_login_page() and "the verification words are incorrect" in page_source:
             logger.warning("Incorrect CAPTCHA.")
             return False
-        elif "Your account has been locked" in page_source:
-            logger.warning("Account locked.")
+
+        error_msg = self._get_login_error()
+        if error_msg:
+            logger.warning(f"Login failed: {error_msg}")
+            self._save_login_debug()
             return False
 
         try:
-            WebDriverWait(self.driver, 25).until(
-                lambda d: any(ind in d.page_source for ind in self.login_success_indicators)
-            )
+            WebDriverWait(self.driver, 25).until(self._login_succeeded)
             logger.info("Login successful.")
             return True
         except TimeoutException:
-            logger.warning("Login unknown – dashboard indicators not found.")
+            if self._is_login_page():
+                logger.warning("Login failed – still on the login page (check your credentials).")
+            else:
+                logger.warning("Login unknown – could not confirm success.")
+            self._save_login_debug()
             return False
 
     # ---------- Slot detection ----------
     def _extract_slot_info(self):
-        """Extract 'Earliest available slot' messages from the current page."""
-        page_source = self.driver.page_source
-        matches = re.findall(self.slot_pattern, page_source, re.IGNORECASE)
+        """Extract the availability message (usually at the bottom of the page).
+
+        Reads the *visible* page text so hidden templates / JS bundles never
+        count as a slot message. Returns a positive slot string, "No slots
+        available", or None if no availability message was found."""
+        try:
+            visible_text = self.driver.find_element(By.TAG_NAME, "body").text or ""
+        except Exception:
+            visible_text = ""
+        page_source = self.driver.page_source or ""
+
+        # Prefer visible text; fall back to raw source if body text is empty.
+        matches = re.findall(self.slot_pattern, visible_text, re.IGNORECASE)
+        if not matches and not visible_text.strip():
+            matches = re.findall(self.slot_pattern, page_source, re.IGNORECASE)
+
         if matches:
             slot_messages = []
             for applicants, date in matches:
                 slot_messages.append(f"{applicants} applicant(s): {date}")
             return " | ".join(slot_messages)
-        else:
-            page_lower = page_source.lower()
-            for phrase in self.slot_negative_keywords:
-                if phrase in page_lower:
-                    return "No slots available"
-            return None
+
+        check_text = visible_text.lower() if visible_text.strip() else page_source.lower()
+        for phrase in self.slot_negative_keywords:
+            if phrase in check_text:
+                return "No slots available"
+        return None
 
     def _matches_centre_filter(self, centre_name):
         if not self.centre:
             return True
         return self.centre.lower() in centre_name.lower()
 
-    def _check_all_centres(self):
-        """Loop over every centre in the dropdown and report slots for each."""
+    def _find_country_dropdown(self, timeout=15):
+        """Locate the country/centre dropdown, with a fallback to any <select>."""
+        try:
+            return WebDriverWait(self.driver, timeout).until(
+                EC.presence_of_element_located(self.center_dropdown_selector)
+            )
+        except Exception:
+            pass
+        try:
+            for sel in self.driver.find_elements(By.TAG_NAME, "select"):
+                if len(sel.find_elements(By.TAG_NAME, "option")) > 1:
+                    return sel
+        except Exception:
+            pass
+        return None
+
+    def _select_option(self, dropdown, option_text):
+        """Select a dropdown option by visible text (native + JS fallback)."""
+        try:
+            Select(dropdown).select_by_visible_text(option_text)
+            return True
+        except Exception:
+            pass
+        try:
+            self.driver.execute_script("""
+                var sel = arguments[0], text = arguments[1];
+                for (var i = 0; i < sel.options.length; i++) {
+                    if (sel.options[i].text.trim() === text) {
+                        sel.selectedIndex = i;
+                        break;
+                    }
+                }
+                sel.dispatchEvent(new Event('change', {bubbles: true}));
+                sel.dispatchEvent(new Event('input', {bubbles: true}));
+            """, dropdown, option_text)
+            return True
+        except Exception:
+            return False
+
+    def _find_all_dropdowns(self):
+        """Return every <select> element currently on the page."""
+        try:
+            return self.driver.find_elements(By.TAG_NAME, "select")
+        except Exception:
+            return []
+
+    def _describe_dropdowns(self, dropdowns):
+        """Log each dropdown's name/id and its options so we can tune selectors."""
+        for i, sel in enumerate(dropdowns):
+            try:
+                opts = [o.text.strip() for o in sel.find_elements(By.TAG_NAME, "option")]
+                name_id = " ".join([
+                    (sel.get_attribute("name") or ""),
+                    (sel.get_attribute("id") or ""),
+                ]).strip().lower()
+                logger.info(f"Dropdown #{i}: name/id={name_id!r}, {len(opts)} options")
+                if opts:
+                    preview = opts[:10]
+                    suffix = " ..." if len(opts) > 10 else ""
+                    logger.info(f"   options: {preview}{suffix}")
+            except Exception:
+                continue
+
+    def _pick_main_dropdown(self, dropdowns):
+        """Prefer the dropdown that looks like a country/centre picker."""
+        for sel in dropdowns:
+            try:
+                name_id = " ".join([
+                    (sel.get_attribute("name") or ""),
+                    (sel.get_attribute("id") or ""),
+                ]).lower()
+            except Exception:
+                continue
+            if any(k in name_id for k in ("country", "centre", "center", "selectedcountry")):
+                return sel
+        return dropdowns[0] if dropdowns else None
+
+    def _dropdown_at(self, index):
+        """Re-locate a dropdown by its position (stale-element guard)."""
+        try:
+            dropdowns = self._find_all_dropdowns()
+            if index < len(dropdowns):
+                return dropdowns[index]
+        except Exception:
+            pass
+        return None
+
+    def _iterate_dropdown(self, dropdown):
+        """Select every option in one dropdown and read the slot message.
+
+        Returns (any_available, report_lines, meaningful) where `meaningful` is
+        True if at least one selection produced a real availability message.
+        """
         report_lines = []
         any_available = False
+        meaningful = False
 
-        dropdown = WebDriverWait(self.driver, 15).until(
-            EC.presence_of_element_located(self.center_dropdown_selector)
-        )
-        select = Select(dropdown)
-        options = select.options
+        try:
+            option_texts = [o.text.strip() for o in Select(dropdown).options]
+        except Exception:
+            return any_available, report_lines, meaningful
 
-        placeholders = {"", "choose your application center", "select centre", "select center", "-- select --"}
-        for option in options:
-            centre_name = option.text.strip()
+        dropdowns = self._find_all_dropdowns()
+        try:
+            index = dropdowns.index(dropdown)
+        except ValueError:
+            index = 0
+
+        placeholders = {
+            "", "choose your application center", "select centre", "select center",
+            "-- select --", "--", "select", "choose", "country", "select country",
+            "please select", "please choose",
+        }
+
+        for centre_name in option_texts:
             if not centre_name or centre_name.lower() in placeholders:
                 continue
             if not self._matches_centre_filter(centre_name):
                 continue
 
             try:
-                select.select_by_visible_text(centre_name)
-                logger.info(f"Selected centre: {centre_name}")
-                self._human_delay(1.5, 3)
+                current = self._dropdown_at(index)
+                if current is None:
+                    break
+                if not self._select_option(current, centre_name):
+                    raise RuntimeError("could not select option")
+                logger.info(f"Selected centre/country: {centre_name}")
+                self._human_delay(1.2, 2.5)
                 slot_info = self._extract_slot_info()
             except Exception as e:
                 slot_info = f"Error selecting: {e}"
@@ -464,27 +751,56 @@ class VFSScraper(BaseScraper):
             if slot_info is None:
                 slot_info = "No clear slot information found"
             elif slot_info == "No slots available":
-                slot_info = "No slots available"
+                meaningful = True
             else:
+                meaningful = True
                 any_available = True
 
             report_lines.append(f"• {centre_name}: {slot_info}")
 
-            # Re-locate dropdown after AJAX update (stale element guard)
-            try:
-                dropdown = WebDriverWait(self.driver, 10).until(
-                    EC.presence_of_element_located(self.center_dropdown_selector)
-                )
-                select = Select(dropdown)
-            except:
-                break
+        return any_available, report_lines, meaningful
 
-        if not report_lines:
-            return False, "No centres available on the appointment page."
+    def _check_all_centres(self):
+        """Find the dropdown whose selections reveal slot availability.
 
-        report = "\n".join(report_lines)
-        logger.info(f"Slot report:\n{report}")
-        return any_available, report
+        The VFS appointment page has multiple dropdown menus (country/centre,
+        category, etc.). We try the country/centre-looking dropdown first, then
+        the rest, and use the first one that produces a real availability
+        message. Every dropdown's structure is logged for diagnostics.
+        """
+        dropdowns = self._find_all_dropdowns()
+        if not dropdowns:
+            return False, "No dropdown menus found on the appointment page."
+
+        self._describe_dropdowns(dropdowns)
+
+        preferred = self._pick_main_dropdown(dropdowns)
+        candidates = dropdowns[:]
+        if preferred is not None and preferred in candidates:
+            candidates.remove(preferred)
+        candidates.insert(0, preferred)
+
+        for dropdown in candidates:
+            if dropdown is None:
+                continue
+            any_available, report_lines, meaningful = self._iterate_dropdown(dropdown)
+            if not meaningful or not report_lines:
+                continue
+            report = "\n".join(report_lines)
+            logger.info(f"Slot report:\n{report}")
+            return any_available, report
+
+        return False, "No slot information found after trying all dropdowns."
+
+    def _save_slot_debug(self):
+        """Save a screenshot + page source when slot checking fails, for debugging."""
+        try:
+            self.driver.save_screenshot("vfs_slot_check_fail.png")
+            with open("vfs_slot_page.html", "w", encoding="utf-8") as f:
+                f.write(self.driver.page_source or "")
+            logger.info("Saved debug files: vfs_slot_check_fail.png, vfs_slot_page.html")
+        except Exception as e:
+            logger.warning(f"Could not save slot debug files: {e}")
 
     def _check_current_page(self):
         slot_info = self._extract_slot_info()
@@ -515,9 +831,14 @@ class VFSScraper(BaseScraper):
             self._dismiss_demo_notice()
 
             try:
-                return self._check_all_centres()
+                available, report = self._check_all_centres()
+                if "No dropdown menus" in report or "No slot information" in report:
+                    logger.warning(report)
+                    self._save_slot_debug()
+                return available, report
             except TimeoutException:
-                logger.info("No centre dropdown found; checking current page.")
+                logger.info("No dropdown found; checking current page.")
+                self._save_slot_debug()
                 return self._check_current_page()
 
         except Exception as e:

@@ -169,7 +169,7 @@ class BaseScraper(ABC):
             self._bypass_cloudflare()
             login_success = self.login()
             if not login_success:
-                return False, "Login failed."
+                return False, "Login failed. Please check your credentials and try again."
             self._save_session()
             result = self.check_slots()
             if isinstance(result, tuple) and len(result) == 2:

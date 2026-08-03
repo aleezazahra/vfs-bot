@@ -1,22 +1,21 @@
-# Visa Slot Checker
+# VFS Visa Slot Checker
 
-A desktop app that watches **VFS Global**, **TLS Contact** and **BLS International**
-booking sites and alerts you the moment an appointment slot opens up.
+A desktop app that watches the **VFS Global** booking site and alerts you the
+moment an appointment slot opens up.
 
 No more refreshing the page every few minutes — fill in your details once, press
 **Start Monitoring**, and get a pop-up the second a slot becomes available.
-
-![App screenshot](screenshots/app.png)
 
 ---
 
 ## Features
 
-- **3 providers in one app** — VFS Global, TLS Contact and BLS International.
-- **Your own links** — enter the exact login link for the account you created on
-  each site (the app is not hard-coded to a single country/centre).
-- **Check all centres/countries at once** — on VFS, every centre in the dropdown is
-  checked and the report lists each one's earliest available slot.
+- **VFS Global only** — the app is built around the VFS EOI flow: log in, create an
+  application, then check every country/centre in the dropdown for slots.
+- **Your own link** — enter the exact login link for the account you created
+  (not hard-coded to a single country/centre).
+- **Checks all dropdown options** — every country/centre in the dropdown is
+  checked and the report lists each one's slot status.
 - **One-off check** (`Check Now`) and **continuous monitoring** (`Start Monitoring`)
   with a configurable check interval.
 - **Instant alert** — a pop-up window appears when slots are found.
@@ -25,9 +24,10 @@ No more refreshing the page every few minutes — fill in your details once, pre
 - **CAPTCHA handling** — uses a 2Captcha API key if you provide one, otherwise falls
   back to local OCR.
 - **Headless mode** — run silently in the background without a browser window.
-- **Settings remembered** — credentials, links and options are stored per provider in
+- **Settings remembered** — credentials, links and options are stored in
   `gui_config.json`, so you don't re-enter them every time.
-- **Live log + status bar** so you always know what the app is doing.
+- **Live log + status bar** showing every step (Cloudflare bypass, CAPTCHA, login,
+  dropdown selections, slot report).
 
 ---
 
@@ -75,50 +75,40 @@ That's it — the app window opens.
 
 ## Step-by-step usage
 
-### 1. Choose your provider
+### 1. Enter the VFS login link
 
-Use the **Provider** dropdown to pick **VFS**, **TLS** or **BLS**.
-
-### 2. Enter the login link
-
-Paste the **Login link** for the account you created on that site.
-
-Examples:
-
-| Provider | Example login link |
-| --- | --- |
-| VFS Global | `https://visa.vfsglobal.com/gbr/en/fin/login` |
-| TLS Contact | `https://visas-fr.tlscontact.com/en-us/login` |
-| BLS International | `https://www.blsinternational.com/` |
+Paste the **Login link** for the account you created, e.g.
+`https://visa.vfsglobal.com/usa/en/eoi/login`.
 
 > The link must be the actual login page of **your** account/country, because that
 > is what the scraper opens and logs into.
 
-### 3. (VFS only) Optional fields
+### 2. Optional fields
 
 - **Appointment link** — the direct booking page, e.g.
-  `https://visa.vfsglobal.com/gbr/en/fin/book-an-appointment`.
-  If left empty the app tries to find the booking link automatically after login.
-- **Centre filter** — only check a specific centre (e.g. `London`). Leave empty to
-  check **all** centres.
+  `https://visa.vfsglobal.com/usa/en/eoi/`. If left empty the app tries to find the
+  booking page automatically after login (by clicking the orange
+  **Create Application** button).
+- **Centre filter** — only check a specific centre/country (e.g. `Pakistan`). Leave
+  empty to check **all** of them.
 
-### 4. Enter your credentials
+### 3. Enter your credentials
 
-Fill in the **Email / username** and **Password** for that site.
+Fill in the **Email / username** and **Password** for that account.
 
 > These are only stored locally in `gui_config.json`. Don't share the file.
 
-### 5. Set the check interval
+### 4. Set the check interval
 
 **Check every (seconds)** controls how often monitoring re-checks the site.
 A sensible value is `300` (every 5 minutes). The minimum is 5 seconds.
 
-### 6. Optional: run headless
+### 5. Optional: run headless
 
-Tick **Run headless** to hide the browser window during checks. Useful for long
-monitoring sessions. Leave it off the first time so you can complete login/OTP.
+Tick **Run headless** to hide the browser window during checks. Leave it off the
+first time so you can complete login/OTP.
 
-### 7. Start
+### 6. Start
 
 - **Check Now** — runs a single check and shows the result in the log.
 - **Start Monitoring** — checks repeatedly on the interval and **pops up an alert**
@@ -130,9 +120,9 @@ When slots are found you'll see something like:
 
 ```
 [VFS] Slot report:
-  • London: 2 applicant(s): 14-08-2026 | 1 applicant(s): 05-08-2026
-  • Manchester: No slots available
-  • Edinburgh: No slots available
+  • Pakistan: 2 applicant(s): 14-08-2026
+  • India: No slots available
+  • Nigeria: No slots available
 [VFS] ✅ Slots AVAILABLE!
 ```
 
@@ -140,7 +130,7 @@ When slots are found you'll see something like:
 
 ---
 
-## First-time login and the email OTP (VFS)
+## First-time login and the email OTP
 
 VFS sometimes sends a one-time password (OTP) to your email after sign-in.
 
@@ -161,10 +151,12 @@ VFS sometimes sends a one-time password (OTP) to your email after sign-in.
 1. The app opens Chrome (UC mode, which also handles Cloudflare challenges).
 2. It loads your saved session, or logs in with your credentials
    (solving the CAPTCHA if needed).
-3. It navigates to the booking page.
-4. **VFS:** it loops through every centre in the dropdown and reads the
-   "Earliest available slot" for each. **TLS/BLS:** it inspects the page for
-   availability wording.
+3. After login it clicks the orange **Create Application** button to reach the
+   appointment page, which has several dropdown menus.
+4. It selects each country/centre in the dropdown turn by turn and reads the
+   availability message that appears on the page (e.g.
+   "Earliest available slot for 2 applicant(s) is: 14-08-2026" or
+   "No open seats available").
 5. The result is logged, and if any slots exist, a pop-up alert fires.
 6. The session is saved again so the next check is fast.
 
@@ -178,26 +170,21 @@ All checks run in a background thread, so the interface stays responsive.
 | --- | --- |
 | `main.py` | Launches the GUI. |
 | `gui.py` | The desktop app (tkinter). |
-| `scrapers/` | The scraper logic for VFS, TLS and BLS (`vfs.py`, `tls.py`, `bls.py`, `base.py`). |
-| `config.py` | Loads `.env` values used by the scrapers. |
+| `scrapers/` | The VFS scraper (`vfs.py`) + shared base (`base.py`). |
+| `config.py` | Loads `.env` values used by the scraper. |
 | `text_check.py` | CLI testing tool (see below). |
-| `gui_config.json` | Your per-provider settings (created on first save). |
-| `profiles/` | Saved login sessions (cookies), one file per provider. |
+| `gui_config.json` | Your settings (created on first save). |
+| `profiles/` | Saved login sessions (cookies). |
 | `.env` | Optional CAPTCHA key + defaults for CLI testing. |
-| `screenshots/` | Documentation images. |
 
 ---
 
 ## CLI testing (optional)
 
-You can test a single provider from the terminal without opening the GUI.
+You can test the scraper from the terminal without opening the GUI.
 Credentials/links come from `.env`.
 
 ```bash
-python text_check.py vfs
-python text_check.py tls
-python text_check.py bls
-# or check every configured provider:
 python text_check.py
 ```
 
@@ -219,12 +206,6 @@ VFS_USERNAME=...
 VFS_PASSWORD=...
 VFS_URL=...
 VFS_APPOINTMENT_URL=
-TLS_USERNAME=...
-TLS_PASSWORD=...
-TLS_URL=...
-BLS_USERNAME=...
-BLS_PASSWORD=...
-BLS_URL=...
 
 # Headless mode for CLI tests.
 HEADLESS=false
@@ -232,9 +213,8 @@ HEADLESS=false
 
 ### `gui_config.json`
 
-Created automatically when you press **Save**. Stores, per provider:
-login link, appointment link, centre filter, username, password, check
-interval and headless flag.
+Created automatically when you press **Save**. Stores: login link, appointment
+link, centre filter, username, password, check interval and headless flag.
 
 ---
 
@@ -248,9 +228,10 @@ interval and headless flag.
   local OCR works but is less reliable.
 - **OTP keeps appearing every run** — the saved session may have expired.
   Run once with the browser visible, enter the OTP, and it will be saved again.
-- **No slots reported but you can see them in a browser** — try setting the
-  **Appointment link** explicitly, and make sure the centre names in the
-  dropdown match what you expect.
+- **"No dropdown menus found"** — run once (not headless) and check the log: it now
+  prints every dropdown found with its options. If none are printed, the page
+  layout changed — grab the saved `vfs_slot_page.html` / `vfs_slot_check_fail.png`
+  from the project folder and check the dropdown structure.
 
 ---
 
